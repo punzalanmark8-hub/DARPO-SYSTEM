@@ -1,137 +1,190 @@
 <?php
-function nav_items(): array {
-    // [label, file, permission]
-    return [
-        ['Dashboard', 'index.php', 'dashboard'],
-        ['Inventory', 'inventory.php', 'inventory.view'],
-        ['Tracking', 'tracking.php', 'inventory.view'],
-        ['Classification', 'classification.php', 'inventory.view'],
-        ['Verification', 'verification.php', 'verify'],
-        ['Search', 'search.php', 'search'],
-        ['QR / Barcode', 'scan.php', 'qr'],
-        ['Custody', 'custody.php', 'custody.view'],
-        ['Retention', 'retention.php', 'retention.request'],
-        ['Reports', 'reports.php', 'reports.view'],
-        ['Tasks', 'tasks.php', 'dashboard'],
-        ['Users', 'users.php', 'users.manage'],
-        ['Audit trail', 'audit.php', 'audit.view'],
-        ['Settings', 'settings.php', 'settings.manage'],
-        ['Backup', 'backup.php', 'backup.manage'],
-    ];
-}
+// Page shell: page_top() prints the header, sidebar and opens <main>; page_bottom() closes it.
+// (Rebuilt: the original layout.php was overwritten with a copy of auth.php.)
 
 function page_top(string $title): void {
-    $cur = basename($_SERVER['SCRIPT_NAME']);
-    $unread = !empty($_SESSION['uid']) ? (int)val('SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0', [$_SESSION['uid']]) : 0;
-    $popNotes = !empty($_SESSION['uid']) ? all('SELECT id,message,link,is_read,created_at FROM notifications WHERE user_id=? ORDER BY is_read, id DESC LIMIT 15', [$_SESSION['uid']]) : [];
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-    echo '<title>' . e($title) . ' | ' . e(cfg()['app']['name']) . '</title><link rel="stylesheet" href="assets/style.css?v=' . @filemtime(__DIR__ . '/../public/assets/style.css') . '"><script src="assets/app.js?v=' . @filemtime(__DIR__ . '/../public/assets/app.js') . '" defer></script></head><body>';
-    echo '<header class="top"><div class="brand">' . (!empty($_SESSION['uid']) ? '<button type="button" class="menu-btn" aria-label="Menu" aria-expanded="false">&#9776;</button>' : '') . '<img class="brandlogo" src="assets/darlogo.png" alt="DAR logo"><div><strong>' . e(cfg()['app']['name']) . '</strong><small>Document Management and Tracking System</small></div></div>';
-    if (!empty($_SESSION['uid'])) {
-        echo '<div class="who"><div class="notif" data-csrf="' . e($_SESSION['csrf'] ?? '') . '"><button type="button" class="bell nbtn" title="Notifications" aria-haspopup="true" aria-expanded="false" aria-label="Notifications' . ($unread ? ", $unread unread" : '') . '"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>' . ($unread ? '<span class="count">' . ($unread > 99 ? '99+' : $unread) . '</span>' : '') . '</button>';
-        echo '<div class="npop" hidden role="dialog" aria-label="Notifications"><div class="nhead"><strong>Notifications</strong><button type="button" class="nall"' . ($unread ? '' : ' hidden') . '>Mark all as read</button></div><div class="nlist">';
-        foreach ($popNotes as $n) {
-            $inner = '<span class="ndot"></span><span class="ntxt">' . e($n['message']) . '<small>' . e(fmt_dt($n['created_at'])) . '</small></span>';
-            $cls = 'nitem' . ($n['is_read'] ? '' : ' unread');
-            echo $n['link'] ? '<a class="' . $cls . '" data-id="' . (int)$n['id'] . '" href="' . e($n['link']) . '">' . $inner . '</a>'
-                            : '<div class="' . $cls . '" data-id="' . (int)$n['id'] . '">' . $inner . '</div>';
-        }
-        echo '<p class="nempty muted"' . ($popNotes ? ' hidden' : '') . '>You have no notifications.</p></div></div></div> ';
-        echo <<<'JS'
-<script>(function(){
-var w=document.querySelector('.notif');if(!w)return;
-var b=w.querySelector('.nbtn'),p=w.querySelector('.npop'),al=w.querySelector('.nall'),list=w.querySelector('.nlist');
-function o(x){p.hidden=!x;b.setAttribute('aria-expanded',x?'true':'false');if(x)load();}
-function cnt(n){var c=b.querySelector('.count');if(n>0){if(!c){c=document.createElement('span');c.className='count';b.appendChild(c);}c.textContent=n>99?'99+':n;}else if(c){c.remove();}if(al)al.hidden=n<1;}
-function draw(items){
-  list.textContent='';
-  items.forEach(function(n){
-    var el=document.createElement(n.link&&/^[\w\-.\/]+\.php/.test(n.link)?'a':'div');
-    el.className='nitem'+(n.is_read?'':' unread');el.setAttribute('data-id',n.id);
-    if(el.tagName==='A')el.href=n.link;
-    var d=document.createElement('span');d.className='ndot';
-    var t=document.createElement('span');t.className='ntxt';t.appendChild(document.createTextNode(n.message));
-    var s=document.createElement('small');s.textContent=n.when;t.appendChild(s);
-    el.appendChild(d);el.appendChild(t);list.appendChild(el);
-  });
-  if(!items.length){var e=document.createElement('p');e.className='nempty muted';e.textContent='You have no notifications.';list.appendChild(e);}
-}
-function apply(j){if(j&&j.ok){cnt(j.unread);draw(j.items);}}
-function load(){return fetch('notifications.php',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json();}).then(apply).catch(function(){});}
-function mark(id){var d=new URLSearchParams({csrf:w.getAttribute('data-csrf'),id:id});return fetch('notifications.php',{method:'POST',body:d,credentials:'same-origin',keepalive:true}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)cnt(j.unread);}).catch(function(){});}
-b.addEventListener('click',function(e){e.stopPropagation();o(p.hidden);});
-p.addEventListener('click',function(e){e.stopPropagation();
-  var it=e.target.closest('.nitem');
-  if(it&&it.classList.contains('unread')){it.classList.remove('unread');mark(it.getAttribute('data-id'));}
-});
-if(al)al.addEventListener('click',function(){Array.prototype.forEach.call(list.querySelectorAll('.nitem'),function(it){it.classList.remove('unread');});mark(0);});
-document.addEventListener('click',function(){o(false);});
-document.addEventListener('keydown',function(e){if(e.key==='Escape')o(false);});
-/* New notifications show up on their own (every 30 s, only while the tab is visible) */
-setInterval(function(){if(!document.hidden)load();},30000);
-document.addEventListener('visibilitychange',function(){if(!document.hidden)load();});
-})();</script>
-JS;
-        echo "\n";
-        echo '<span>' . e($_SESSION['name']) . ' (' . e(ROLES[$_SESSION['role']] ?? '') . ')</span> ';
-        echo '<a href="account.php" class="bell ibtn" title="Account" aria-label="Account"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></a> ';
-        echo '<a href="logout.php" class="bell ibtn out" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></a></div>';
+    $cfg = cfg()['app'];
+    $app = (string)($cfg['name'] ?? 'e-Records');
+    $cur = basename($_SERVER['SCRIPT_NAME'] ?? '');
+    $uid = (int)($_SESSION['uid'] ?? 0);
+
+    // Force a password change before anything else
+    if ($uid && !in_array($cur, ['account.php', 'logout.php', 'notifications.php'], true)
+        && (int)(val('SELECT must_change_password FROM users WHERE id=?', [$uid]) ?: 0) === 1) {
+        flash('warn', 'Please change your password before continuing.');
+        redirect('account.php');
     }
-    echo '</header><div class="shell">';
-    if (!empty($_SESSION['uid'])) {
-        echo '<nav>';
-        foreach (nav_items() as [$label, $file, $perm]) {
-            if (can($perm)) echo '<a href="' . $file . '"' . ($file === $cur ? ' class="on"' : '') . '>' . e($label) . '</a>';
-        }
-        echo '</nav><div class="scrim"></div>';
+
+    $unread = $uid ? (int)val('SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0', [$uid]) : 0;
+    $roleName = ucwords(str_replace('_', ' ', role()));
+    ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?= e($title) ?> · <?= e($app) ?></title>
+<link rel="icon" href="assets/darlogo.png">
+<link rel="stylesheet" href="assets/style.css">
+<style>header.top button.bell .count{top:-6px;right:-6px;min-width:12px;height:14px;line-height:14px;padding:0 3px;font-size:10px}header.top .who{gap:8px}</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <button type="button" class="menu-btn" aria-label="Menu" aria-expanded="false">&#9776;</button>
+    <img class="brandlogo" src="assets/darlogo.png" alt="">
+    <div><strong><?= e($app) ?></strong><small>Records management and digitization</small></div>
+  </div>
+  <div class="who">
+    <?php if ($uid): ?>
+    <div class="notif">
+      <button type="button" class="bell" id="bellBtn" aria-label="Notifications" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="count" id="bellCount"<?= $unread ? '' : ' hidden' ?>><?= $unread > 99 ? '99+' : $unread ?></span>
+      </button>
+      <div class="npop" id="bellPop" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--ln)">
+          <strong>Notifications</strong>
+          <a href="#" id="bellAll" style="font-size:12px;margin:0">Mark all read</a>
+        </div>
+        <div class="nlist" id="bellList"><div class="muted" style="padding:14px">Loading…</div></div>
+        <div style="padding:8px 14px"><a href="tasks.php" style="color:var(--g);margin:0;font-size:13px">Open tasks &rarr;</a></div>
+      </div>
+    </div>
+    <span style="margin:0 6px 0 10px;line-height:1.25"><?= e($_SESSION['name'] ?? '') ?> <small><?= e($roleName) ?></small></span>
+    <a class="ibtn" href="account.php" title="My account">Account</a>
+    <a class="ibtn out" href="logout.php" title="Sign out">Sign out</a>
+    <?php endif; ?>
+  </div>
+</header>
+<div class="scrim"></div>
+<div class="shell">
+<nav>
+<?php foreach (module_registry() as $m):
+    if (!module_visible($m['file'], $m['perm'])) continue;
+    // administration modules are only shown to accounts that actually hold the permission
+    if ($m['fixed'] === 'admin' && !can($m['perm'])) continue; ?>
+  <a href="<?= e($m['file']) ?>"<?= $cur === $m['file'] ? ' class="on"' : '' ?>><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:8px"><?= $m['icon'] ?></svg><?= e($m['label']) ?></a>
+<?php endforeach; ?>
+</nav>
+<main>
+<h1><?= e($title) ?></h1>
+<?php
+    foreach ($_SESSION['flash'] ?? [] as [$type, $msg]) {
+        $cls = in_array($type, ['err', 'warn'], true) ? ' ' . $type : '';
+        echo '<div class="flash' . $cls . '">' . e($msg) . '</div>';
     }
-    echo '<main><h1>' . e($title) . '</h1>';
-    foreach ($_SESSION['flash'] ?? [] as [$t, $m]) echo '<div class="flash ' . e($t) . '">' . e($m) . '</div>';
     unset($_SESSION['flash']);
 }
-function page_bottom(): void { echo '</main></div></body></html>'; }
 
-// Reusable <select> builders
-function select_options(array $rows, string $valueKey, string $labelKey, $selected = null, bool $blank = false): string {
-    $h = $blank ? '<option value="">All</option>' : '';
-    foreach ($rows as $r) {
-        $h .= '<option value="' . e($r[$valueKey]) . '"' . ((string)$selected === (string)$r[$valueKey] ? ' selected' : '') . '>' . e($r[$labelKey]) . '</option>';
+function page_bottom(): void {
+    $csrf = $_SESSION['csrf'] ?? '';
+    ?>
+</main>
+</div>
+<script src="assets/app.js"></script>
+<?php if (!empty($_SESSION['uid'])): ?>
+<script>
+(function () {
+  var btn = document.getElementById('bellBtn'), pop = document.getElementById('bellPop'),
+      list = document.getElementById('bellList'), cnt = document.getElementById('bellCount'),
+      all = document.getElementById('bellAll'), csrf = <?= json_encode($csrf) ?>;
+  if (!btn) return;
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+  function render(d) {
+    if (!d || !d.ok) return;
+    cnt.textContent = d.unread > 99 ? '99+' : d.unread; cnt.hidden = !d.unread;
+    list.innerHTML = d.items.length ? d.items.map(function (n) {
+      return '<a class="nitem' + (n.is_read ? '' : ' unread') + '" href="' + esc(n.link || '#') + '" data-id="' + n.id + '">' +
+             '<span class="ndot"></span><span>' + esc(n.message) + '<small>' + esc(n.when) + '</small></span></a>';
+    }).join('') : '<div class="muted" style="padding:14px">No notifications.</div>';
+  }
+  function load(id) {
+    var opt = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+    if (id !== undefined) {
+      var fd = new FormData(); fd.append('csrf', csrf); fd.append('id', id);
+      opt.method = 'POST'; opt.body = fd;
     }
-    return $h;
+    return fetch('notifications.php', opt).then(function (r) { return r.json(); }).then(render).catch(function () {});
+  }
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', !pop.hidden);
+    if (!pop.hidden) load();
+  });
+  document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target)) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); } });
+  all.addEventListener('click', function (e) { e.preventDefault(); load(0); });
+  list.addEventListener('click', function (e) {
+    var a = e.target.closest('a.nitem'); if (!a) return;
+    if (a.getAttribute('href') === '#') { e.preventDefault(); load(a.dataset.id); return; }
+    var fd = new FormData(); fd.append('csrf', csrf); fd.append('id', a.dataset.id);
+    if (navigator.sendBeacon) navigator.sendBeacon('notifications.php', fd);
+  });
+  setInterval(function () { if (!document.hidden) load(); }, 60000);
+})();
+</script>
+<?php endif; ?>
+</body>
+</html>
+<?php
 }
-function status_options($selected = '', bool $blank = true): string {
-    $h = $blank ? '<option value="">All</option>' : '';
-    foreach (STATUSES as $k => $v) $h .= '<option value="' . $k . '"' . ($selected === $k ? ' selected' : '') . '>' . e($v) . '</option>';
-    return $h;
+
+
+// ---------------------------------------------------------------------------------------------
+// Form and display helpers used by the pages
+// ---------------------------------------------------------------------------------------------
+
+// <option> list from rows. $all = true adds a leading "All" option (value ""). $selected is compared as text.
+function select_options(array $rows, string $valKey, string $labelKey, $selected = null, bool $all = false): string {
+    $out = $all ? '<option value="">All</option>' : '';
+    foreach ($rows as $r) {
+        $v = (string)($r[$valKey] ?? '');
+        $out .= '<option value="' . e($v) . '"' . ($selected !== null && $selected !== '' && (string)$selected === $v ? ' selected' : '') . '>' . e((string)($r[$labelKey] ?? '')) . '</option>';
+    }
+    return $out;
 }
+
+// Status filter dropdown: "All statuses" plus every status.
+function status_options($selected = ''): string {
+    $out = '<option value="">All statuses</option>';
+    foreach (STATUSES as $k => $label) $out .= '<option value="' . e($k) . '"' . ((string)$selected === (string)$k ? ' selected' : '') . '>' . e($label) . '</option>';
+    return $out;
+}
+
+// Where a physical record is kept: the storage (cabinet / holder / shelf) if set, otherwise the older cabinet-shelf-box-folder fields.
 function location_text(array $r): string {
-    if ($l = storage_label($r)) return $l;   // admin-defined storage (cabinet no. + category, or CODE-NO such as FD-2)
-    $p = array_filter([!empty($r['cabinet']) ? 'Cabinet ' . $r['cabinet'] : '', !empty($r['shelf']) ? 'Shelf ' . $r['shelf'] : '',
-                       !empty($r['box']) ? 'Box ' . $r['box'] : '', !empty($r['folder']) ? 'Folder ' . $r['folder'] : '']);
-    return $p ? implode(' / ', $p) : 'Not recorded';
+    $s = storage_label($r);
+    if ($s) return $s;
+    $parts = [];
+    foreach (['cabinet' => 'Cabinet', 'shelf' => 'Shelf', 'box' => 'Box', 'folder' => 'Folder'] as $k => $label)
+        if (isset($r[$k]) && trim((string)$r[$k]) !== '') $parts[] = $label . ' ' . trim((string)$r[$k]);
+    return $parts ? implode(' / ', $parts) : '—';
 }
-/* Tabbed page layout, same look as System configuration (settings.php).
-   tabs_begin('Label', ['id' => 'Tab name', ...]); tab_open('id'); ...; tab_close(); ... tabs_end(); */
+
+// ---------------------------------------------------------------------------------------------
+// Tabbed pages:  tabs_begin('Title', ['key' => 'Label', ...], $wide);  tab_open('key'); ... tab_close();  tabs_end();
+// The first tab in the list opens by default; the address hash (#tab-key) or the last tab used on this page wins.
+// ---------------------------------------------------------------------------------------------
 function tabs_begin(string $label, array $tabs, bool $wide = false): void {
-    echo '<div class="tabbed' . ($wide ? ' wide' : '') . '"><div class="tabbar noprint" role="tablist" aria-label="' . e($label) . '">';
-    foreach ($tabs as $id => $name) echo '<a href="#tab-' . e($id) . '" data-tab="' . e($id) . '" role="tab">' . e($name) . '</a>';
+    echo '<div class="tabbed' . ($wide ? ' wide' : '') . '" data-first="' . e((string)array_key_first($tabs)) . '">';
+    echo '<div class="tabbar noprint" role="tablist" aria-label="' . e($label) . '">';
+    foreach ($tabs as $k => $t) echo '<a href="#tab-' . e((string)$k) . '" data-tab="' . e((string)$k) . '" role="tab">' . e($t) . '</a>';
     echo '</div>';
 }
-function tab_open(string $id): void { echo '<section class="tabpane" id="tab-' . e($id) . '">'; }
+function tab_open(string $key): void { echo '<section class="tabpane" id="tab-' . e($key) . '">'; }
 function tab_close(): void { echo '</section>'; }
 function tabs_end(): void {
-    echo <<<'HTML'
-</div>
+    echo '</div>';
+    ?>
 <script>
 (function(){var w=document.querySelector('.tabbed');if(!w)return;w.classList.add('js');
-var key='tab:'+location.pathname,tabs=[].slice.call(w.querySelectorAll('.tabbar a')),panes=[].slice.call(w.querySelectorAll('.tabpane'));
-function show(id,save){var found=panes.some(function(p){return p.id==='tab-'+id;});if(!found)id=tabs[0].getAttribute('data-tab');
+var tabs=[].slice.call(w.querySelectorAll('.tabbar a')),panes=[].slice.call(w.querySelectorAll('.tabpane')),first=w.getAttribute('data-first'),sk='tab:'+location.pathname;
+function show(id,save){var found=panes.some(function(p){return p.id==='tab-'+id;});if(!found)id=first;
 panes.forEach(function(p){p.classList.toggle('on',p.id==='tab-'+id);});
 tabs.forEach(function(a){var on=a.getAttribute('data-tab')===id;a.classList.toggle('on',on);a.setAttribute('aria-selected',on?'true':'false');});
-if(save){try{sessionStorage.setItem(key,id);}catch(e){}if(history.replaceState)history.replaceState(null,'','#tab-'+id);}}
+if(save){try{sessionStorage.setItem(sk,id);}catch(e){}if(history.replaceState)history.replaceState(null,'','#tab-'+id);}}
 tabs.forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();show(a.getAttribute('data-tab'),true);});});
-var h=location.hash.replace('#tab-',''),s=null;try{s=sessionStorage.getItem(key);}catch(e){}
-show(h||s||'',false);})();
+var h=location.hash.replace('#tab-',''),s=null;try{s=sessionStorage.getItem(sk);}catch(e){}
+show(h||s||first,false);})();
 </script>
-HTML;
+<?php
 }

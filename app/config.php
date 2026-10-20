@@ -16,6 +16,17 @@ return [
         'uploads' => __DIR__ . '/../storage/uploads',
         'backups' => __DIR__ . '/../storage/backups',
     ],
+    // Client requests are e-mailed with PHPMailer through Gmail SMTP.
+    'mail' => [
+        'host'       => 'smtp.gmail.com',
+        'port'       => 587,           // 587 with 'tls', or 465 with 'ssl'
+        'encryption' => 'tls',
+        'username'   => 'mbdjc23@gmail.com',            // the Gmail address
+        'password'   => 'lxdf lhou rgny zimh',            // the Gmail App Password (16 characters), NOT the normal password
+        'from_email' => '',            // leave empty to use the Gmail address
+        'from_name'  => 'DAR e-Records',
+        'verify_ssl' => true,          // set to false only if you get "certificate verify failed" on local Windows XAMPP
+    ],
     // Optional: full paths if mysqldump is not in PATH (e.g. XAMPP on Windows)
     'mysqldump' => 'mysqldump',
     // true = show a readable error message while setting up. Set to false on the live server.

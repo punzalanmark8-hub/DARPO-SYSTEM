@@ -3,8 +3,8 @@
 const PERMS = [
     'admin'           => ['*'],
     'records_officer' => ['dashboard', 'inventory.view', 'inventory.edit', 'tracking.update', 'class.request', 'scan.upload', 'custody.view', 'custody.manage',
-                          'retention.request', 'reports.view', 'search', 'search.export', 'tasks.assign', 'records.viewall', 'qr'],
-    'division_staff'  => ['dashboard', 'inventory.view', 'scan.upload', 'custody.view', 'search', 'qr'],
+                          'retention.request', 'reports.view', 'search', 'search.export', 'tasks.assign', 'records.viewall', 'qr', 'creq'],
+    'division_staff'  => ['dashboard', 'inventory.view', 'scan.upload', 'custody.view', 'search', 'qr', 'creq'],
     'verifier'        => ['dashboard', 'inventory.view', 'verify', 'search', 'records.viewall', 'qr'],
     'viewer'          => ['dashboard', 'search'],
 ];
@@ -15,15 +15,23 @@ function can(string $perm): bool {
     return in_array('*', $list, true) || in_array($perm, $list, true);
 }
 function require_login(): void {
-    if (empty($_SESSION['uid'])) redirect('login.php');
+    if (empty($_SESSION['uid'])) {
+        // remember a scanned QR link so the person lands on it after signing in
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && basename($_SERVER['SCRIPT_NAME']) === 'scan.php')
+            $_SESSION['next'] = 'scan.php?' . ($_SERVER['QUERY_STRING'] ?? '');
+        redirect('login.php');
+    }
 }
 function require_perm(string $perm): void {
     require_login();
-    if (!can($perm)) {
-        audit('access_denied', 'page', basename($_SERVER['SCRIPT_NAME']), "needs $perm");
+    // Module access set by the administrator (public/modules.php): a blocked module is refused, an allowed one opens even without the role permission
+    $mod = module_for_file(basename($_SERVER['SCRIPT_NAME']));
+    $state = $mod !== null ? module_state($mod) : 'default';
+    if ($state === 'deny' || ($state !== 'grant' && !can($perm))) {
+        audit('access_denied', 'page', basename($_SERVER['SCRIPT_NAME']), $state === 'deny' ? 'module blocked for this account' : "needs $perm");
         http_response_code(403);
         page_top('Access denied');
-        echo '<div class="card"><h2>Access denied</h2><p>Your role does not have permission to open this page.</p></div>';
+        echo '<div class="card"><h2>Access denied</h2><p>' . ($state === 'deny' ? 'This module has been turned off for your account. Contact the administrator if you need it.' : 'Your role does not have permission to open this page.') . '</p></div>';
         page_bottom();
         exit;
     }

@@ -137,10 +137,15 @@ function ensure_storage_schema(): void {
             if (!val("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='records' AND column_name=?", [$col]))
                 q("ALTER TABLE records ADD COLUMN $col $def");
         }
+        // Every storage category gets its own QR token (scanning it lists the scanned documents kept in that storage)
+        if (!val("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='storage_categories' AND column_name='qr_token'"))
+            q('ALTER TABLE storage_categories ADD COLUMN qr_token CHAR(16) NULL, ADD UNIQUE KEY uq_storage_cat_qr(qr_token)');
         if (!val('SELECT COUNT(*) FROM storage_categories WHERE storage_type=?', ['document_holder'])) {
             foreach ([['Document Box', 'DB'], ['Folder', 'FD'], ['Binder', 'BD']] as [$n, $c])
                 q('INSERT IGNORE INTO storage_categories(storage_type,name,code) VALUES(?,?,?)', ['document_holder', $n, $c]);
         }
+        foreach (all('SELECT id FROM storage_categories WHERE qr_token IS NULL') as $row)
+            q('UPDATE storage_categories SET qr_token=? WHERE id=?', [bin2hex(random_bytes(8)), $row['id']]);
     } catch (Throwable $e) { error_log('ensure_storage_schema: ' . $e->getMessage()); }
 }
 // Highest cabinet / holder number the administrator allows for a storage type.

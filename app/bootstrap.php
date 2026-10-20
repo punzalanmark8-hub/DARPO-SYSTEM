@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/modules.php';
 require_once __DIR__ . '/layout.php';
 require_once __DIR__ . '/pagelib.php';
 
@@ -66,7 +67,9 @@ if (!defined('PUBLIC_PAGE')) {
         redirect('account.php');
     }
     // Storage location tables/columns are created automatically on an existing database (once per login)
-    if (empty($_SESSION['storage_ok'])) { ensure_storage_schema(); $_SESSION['storage_ok'] = 1; }
+    if (($_SESSION['storage_ok'] ?? 0) !== 2) { ensure_storage_schema(); $_SESSION['storage_ok'] = 2; }   // 2 = includes storage category QR tokens
+    // Module access table (once per login)
+    if (empty($_SESSION['mod_ok'])) { ensure_module_schema(); $_SESSION['mod_ok'] = 1; }
     // Account might have been deactivated while signed in
     if (!val('SELECT is_active FROM users WHERE id=?', [$_SESSION['uid']])) { logout_user(); redirect('login.php'); }
 }
