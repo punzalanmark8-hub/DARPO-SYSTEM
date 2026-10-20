@@ -4,8 +4,9 @@ require __DIR__ . '/../app/bootstrap.php';
 if (!empty($_SESSION['uid'])) redirect('index.php');
 $err = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $next = $_SESSION['next'] ?? '';   // login_user() resets the session, so keep the scanned link first
     $err = login_user(post('username'), (string)($_POST['password'] ?? ''));
-    if (!$err) redirect('index.php');
+    if (!$err) redirect(preg_match('/^scan\.php\?[A-Za-z0-9=&_.%-]*$/', $next) ? $next : 'index.php');
 }
 $flashes = $_SESSION['flash'] ?? [];
 unset($_SESSION['flash']);
@@ -83,4 +84,4 @@ if(document.querySelector('.msg:not(.warn):not(.ok)')){box.classList.add('shake'
 })();
 </script>
 </body>
-</html> 
+</html>

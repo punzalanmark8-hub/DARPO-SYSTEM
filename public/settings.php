@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($c !== '' && !preg_match('/^[A-Z0-9]{1,6}$/', $c)) flash('err', 'The code can only use letters and numbers (up to 6).');
         elseif (one('SELECT id FROM storage_categories WHERE storage_type=? AND name=?', [$t, $n])) flash('err', 'That category already exists for this storage.');
         elseif ($c !== '' && one('SELECT id FROM storage_categories WHERE storage_type=? AND code=?', [$t, $c])) flash('err', 'That code is already used.');
-        else { $id = insert('storage_categories', ['storage_type' => $t, 'name' => $n, 'code' => $c ?: null]); audit('storage_category_added', 'storage_category', $id, STORAGE_TYPES[$t] . ': ' . $n); flash('ok', 'Storage category added.'); }
+        else { $id = insert('storage_categories', ['storage_type' => $t, 'name' => $n, 'code' => $c ?: null, 'qr_token' => bin2hex(random_bytes(8))]); audit('storage_category_added', 'storage_category', $id, STORAGE_TYPES[$t] . ': ' . $n); flash('ok', 'Storage category added.'); }
     } elseif ($act === 'scanners') {
         $lines = array_filter(array_map('trim', preg_split('/\R/', post('scanners'))), fn($l) => $l !== '');
         $folder = rtrim(post('scan_folder'), "/\\ ");
@@ -52,11 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         audit('settings_changed', 'settings'); flash('ok', 'Settings saved.');
     }
+    if ($act === 'toggle' && post('table') === 'storage_categories' && (int)post('scpage') > 1) redirect('settings.php?scpage=' . (int)post('scpage') . '#tab-storagecats');
     redirect('settings.php');
 }
+$scp = max(1, (int)get('scpage'));
 $divs = all('SELECT * FROM divisions ORDER BY code'); $secs = all('SELECT s.*, d.code FROM sections s JOIN divisions d ON d.id=s.division_id ORDER BY d.code, s.name');
 $cats = all('SELECT * FROM categories ORDER BY name');
-$toggle = fn($t, $r) => '<form method="post" style="margin:0">' . csrf_field() . '<input type="hidden" name="action" value="toggle"><input type="hidden" name="table" value="' . $t . '"><input type="hidden" name="id" value="' . $r['id'] . '"><button class="sm alt">' . ($r['is_active'] ? 'Deactivate' : 'Activate') . '</button></form>';
+$toggle = fn($t, $r) => '<form method="post" style="margin:0">' . csrf_field() . '<input type="hidden" name="action" value="toggle"><input type="hidden" name="table" value="' . $t . '"><input type="hidden" name="id" value="' . $r['id'] . '">' . ($t === 'storage_categories' ? '<input type="hidden" name="scpage" value="' . $scp . '">' : '') . '<button class="sm alt">' . ($r['is_active'] ? 'Deactivate' : 'Activate') . '</button></form>';
 page_top('System configuration');
 ?>
 <div class="tabbed"><div class="tabbar noprint" role="tablist" aria-label="System configuration"><a href="#tab-options" data-tab="options" role="tab">System options</a><a href="#tab-scanners" data-tab="scanners" role="tab">Scanners</a><a href="#tab-storage" data-tab="storage" role="tab">Physical storage locations</a><a href="#tab-storagecats" data-tab="storagecats" role="tab">Storage categories</a><a href="#tab-divisions" data-tab="divisions" role="tab">Divisions</a><a href="#tab-sections" data-tab="sections" role="tab">Sections</a><a href="#tab-doccats" data-tab="doccats" role="tab">Document categories</a></div>
@@ -88,10 +90,30 @@ page_top('System configuration');
 <button>Save limits</button></form></div>
 </section>
 <section class="tabpane" id="tab-storagecats">
-<?php $scats = all("SELECT * FROM storage_categories ORDER BY FIELD(storage_type,'filing_cabinet','document_holder','storage_shelf'), name"); ?>
-<div class="card tw"><h2>Storage categories</h2><table><tr><th>Physical storage</th><th>Category</th><th>Code</th><th></th></tr>
-<?php foreach ($scats as $c): ?><tr><td><?= e(STORAGE_TYPES[$c['storage_type']] ?? $c['storage_type']) ?></td><td><?= e($c['name']) ?> <?= $c['is_active'] ? '' : badge('inactive', 'bad') ?></td><td><?= e($c['code'] ?? '—') ?></td><td><?= $toggle('storage_categories', $c) ?></td></tr>
-<?php endforeach; if (!$scats): ?><tr><td colspan="4" class="muted">No categories yet.</td></tr><?php endif; ?></table>
+<?php
+$sper = 5;
+$stotal = (int)val('SELECT COUNT(*) FROM storage_categories');
+$spages = max(1, (int)ceil($stotal / $sper));
+$scp = min($scp, $spages);
+$scats = all("SELECT * FROM storage_categories ORDER BY FIELD(storage_type,'filing_cabinet','document_holder','storage_shelf'), name LIMIT $sper OFFSET " . (($scp - 1) * $sper));
+?>
+<div class="card tw"><h2>Storage categories</h2><table><tr><th>Physical storage</th><th>Category</th><th>Code</th><th>QR code</th><th></th></tr>
+<?php foreach ($scats as $c): ?><tr><td><?= e(STORAGE_TYPES[$c['storage_type']] ?? $c['storage_type']) ?></td><td><?= e($c['name']) ?> <?= $c['is_active'] ? '' : badge('inactive', 'bad') ?></td><td><?= e($c['code'] ?? '—') ?></td>
+<td><?php if (!empty($c['qr_token'])): ?><div class="qr sqr" data-url="<?= e(rtrim(cfg()['app']['base_url'], '/') . '/scan.php?s=' . $c['qr_token']) ?>" style="width:72px;height:72px"></div> <a class="sm" href="qr.php?scat=<?= (int)$c['id'] ?>">Print label</a><?php else: ?><span class="muted">—</span><?php endif; ?></td>
+<td><?= $toggle('storage_categories', $c) ?></td></tr>
+<?php endforeach; if (!$scats): ?><tr><td colspan="5" class="muted">No categories yet.</td></tr><?php endif; ?></table>
+<?php $sl = fn(int $n, string $label, bool $on = false) => '<a class="btn sm ' . ($on ? '' : 'alt') . '" href="settings.php?scpage=' . $n . '#tab-storagecats">' . $label . '</a> '; ?>
+<div class="row noprint" style="justify-content:space-between;align-items:center">
+  <span class="muted">Showing <?= $stotal ? ($scp - 1) * $sper + 1 : 0 ?>&ndash;<?= min($stotal, $scp * $sper) ?> of <?= $stotal ?> &middot; Page <?= $scp ?> of <?= $spages ?></span>
+  <?php if ($spages > 1): ?><span>
+    <?php if ($scp > 1): ?><?= $sl($scp - 1, '&lsaquo; Prev') ?><?php endif; ?>
+    <?php for ($i = 1; $i <= $spages; $i++) echo $sl($i, (string)$i, $i === $scp); ?>
+    <?php if ($scp < $spages): ?><?= $sl($scp + 1, 'Next &rsaquo;') ?><?php endif; ?>
+  </span><?php endif; ?>
+</div>
+<p class="muted">Scan a category's QR code to see every scanned document filed under it.</p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>document.querySelectorAll('.sqr').forEach(function (el) { new QRCode(el, {text: el.dataset.url, width: 72, height: 72}); });</script>
 <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="storage_cat">
 <label>Physical storage <select name="storage_type"><?php foreach (STORAGE_TYPES as $k => $v): ?><option value="<?= $k ?>"><?= e($v) ?></option><?php endforeach; ?></select></label>
 <label>Category name <input name="name" required></label><label>Code (needed for boxes, folders, binders) <input name="code" maxlength="6" style="width:90px" placeholder="FD"></label><button class="alt">Add category</button></form></div>
